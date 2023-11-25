@@ -305,19 +305,20 @@ module Isupipe
           raise HttpError.new(400, 'bad reservation time range')
         end
 
-        start_id = (req.start_at - 1700874000) / 3600
+        start_id = (req.start_at - 1700874000) / 3600 + 1
         end_id = ((req.end_at - 1700874000) / 3600.0).ceil
-
+        if (end_id - start_id) >=  0
         # 予約枠をみて、予約が可能か調べる
         # NOTE: 並列な予約のoverbooking防止にFOR UPDATEが必要
-        tx.xquery('SELECT * FROM reservation_slots WHERE id BETWEEN ? AND ? FOR UPDATE', start_id, end_id).each do |slot|
-          logger.info("#{slot.fetch(:start_at)} ~ #{slot.fetch(:end_at)}予約枠の残数 = #{slot.fetch(:slot)}")
-          if slot.fetch(:slot) < 1
-            raise HttpError.new(400, "予約期間 #{term_start_at.to_i} ~ #{term_end_at.to_i}に対して、予約区間 #{req.start_at} ~ #{req.end_at}が予約できません")
+          tx.xquery('SELECT * FROM reservation_slots WHERE id BETWEEN ? AND ? FOR UPDATE', start_id, end_id).each do |slot|
+            logger.info("#{slot.fetch(:start_at)} ~ #{slot.fetch(:end_at)}予約枠の残数 = #{slot.fetch(:slot)}")
+            if slot.fetch(:slot) < 1
+              raise HttpError.new(400, "予約期間 #{term_start_at.to_i} ~ #{term_end_at.to_i}に対して、予約区間 #{req.start_at} ~ #{req.end_at}が予約できません")
+            end
           end
-        end
+          tx.xquery('UPDATE reservation_slots SET slot = slot - 1 WHERE id BETWEEN ? AND ?', start_id, end_id)
+        end 
 
-        tx.xquery('UPDATE reservation_slots SET slot = slot - 1 WHERE id BETWEEN ? AND ?', start_id, end_id)
         tx.xquery('INSERT INTO livestreams (user_id, title, description, playlist_url, thumbnail_url, start_at, end_at) VALUES(?, ?, ?, ?, ?, ?, ?)', user_id, req.title, req.description, req.playlist_url, req.thumbnail_url, req.start_at, req.end_at)
         livestream_id = tx.last_id
 
