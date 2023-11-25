@@ -74,3 +74,6 @@ deploy3:
 	ssh isucon3 "sudo systemctl restart nginx.service"
 	ssh isucon3 "sudo systemctl daemon-reload"
 	ssh isucon3 "sudo systemctl restart isupipe-ruby.service"
+
+edit:
+	vim ./webapp/ruby/app.rb
