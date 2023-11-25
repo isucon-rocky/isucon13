@@ -544,14 +544,16 @@ module Isupipe
           FROM tags 
           INNER JOIN livestream_tags ON tags.id = livestream_tags.tag_id 
           WHERE livestream_tags.livestream_id IN (#{ livestream_ids.map { |_row| '?' }.join(',') })"
-        tx.xquery(tag_query, livestream_ids).map do |tag_model|
-          tags_array[tag_model.fetch(:livestream_id)] ||= []
-          tags_array[tag_model.fetch(:livestream_id)] << {
-            id: tag_model.fetch(:id),
-            name: tag_model.fetch(:name),
-          }
-        end
 
+        if !livestream_ids.empty?
+          tx.xquery(tag_query, livestream_ids).map do |tag_model|
+            tags_array[tag_model.fetch(:livestream_id)] ||= []
+            tags_array[tag_model.fetch(:livestream_id)] << {
+              id: tag_model.fetch(:id),
+              name: tag_model.fetch(:name),
+            }
+          end
+        end
 
         query_result.map do |livecomment_model|
           image =
