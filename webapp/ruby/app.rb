@@ -16,7 +16,7 @@ Datadog.configure do |c|
   c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
   c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
   c.env = 'prod'
-  c.version = '1.1.0'
+  c.version = '1.2.0'
 end
 
 module Isupipe
