@@ -10,6 +10,15 @@ require 'securerandom'
 require 'sinatra/base'
 require 'sinatra/json'
 
+require 'ddtrace/auto_instrument'
+
+Datadog.configure do |c|
+  c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
+  c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
+  c.env = 'prod'
+  c.version = '1.0.0'
+end
+
 module Isupipe
   class App < Sinatra::Base
     enable :logging
