@@ -803,29 +803,30 @@ module Isupipe
 
       reactions = db_transaction do |tx|
         query = '
-        SELECT 
-          reactions.*,
-          users.id AS user_id,
-          users.name AS user_name,
-          users.display_name AS user_display_name,
-          users.description AS user_description,
-          themes.id AS theme_id,
-          themes.dark_mode AS theme_dark_mode,
-          icons.image AS icon_image,
-          livestreams.id AS livestream_id,
-          livestreams.title AS livestream_title,
-          livestreams.description AS livestream_description,
-          livestreams.playlist_url AS livestream_playlist_url,
-          livestreams.thumbnail_url AS livestream_thumbnail_url,
-          livestreams.start_at AS livestream_start_at,
-          livestreams.end_at AS livestream_end_at,
-        FROM reactions 
-        INNER JOIN users ON users.id = reactions.user_id
-        INNER JOIN themes ON themes.user_id = users.id
-        LEFT OUTER JOIN icons ON icons.user_id = users.id
-        INNER JOIN livestreams ON livestreams.id = reactions.livestream_id
-        WHERE livestream_id = ? 
-        ORDER BY created_at DESC'
+          SELECT 
+            reactions.*, 
+            livestreams.id AS livestream_id,
+            livestreams.title AS livestream_title,
+            livestreams.description AS livestream_description,
+            livestreams.playlist_url AS livestream_playlist_url,
+            livestreams.thumbnail_url AS livestream_thumbnail_url,
+            livestreams.start_at AS livestream_start_at,
+            livestreams.end_at AS livestream_end_at,
+            users.id AS user_id, 
+            users.name AS user_name, 
+            users.display_name AS user_display_name, 
+            users.description AS user_description, 
+            themes.id AS theme_id, 
+            themes.dark_mode AS theme_dark_mode, 
+            icons.image AS icon_image
+          FROM reactions 
+          INNER JOIN users ON reactions.user_id = users.id
+          INNER JOIN themes ON users.id = themes.user_id
+          INNER JOIN livestreams ON reactions.livestream_id = livestreams.id
+          LEFT OUTER JOIN icons ON users.id = icons.user_id
+          WHERE reactions.livestream_id = ?
+          ORDER BY created_at DESC
+        '
         limit_str = params[:limit] || ''
         if limit_str != ''
           limit = cast_as_integer(limit_str)
