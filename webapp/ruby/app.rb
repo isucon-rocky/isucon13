@@ -22,6 +22,7 @@ end
 module Isupipe
   class App < Sinatra::Base
     enable :logging
+
     set :show_exceptions, :after_handler
     set :sessions, domain: 'u.isucon.dev', path: '/', expire_after: 1000*300
     set :session_secret, ENV.fetch('ISUCON13_SESSION_SECRETKEY', 'isucon13_session_cookiestore_defaultsecret').unpack('H*')[0]
@@ -304,17 +305,19 @@ module Isupipe
           raise HttpError.new(400, 'bad reservation time range')
         end
 
+        start_id = (req.start_at - 1700874000) / 3600
+        end_id = ((req.end_at - 1700874000) / 3600.0).ceil
+
         # 予約枠をみて、予約が可能か調べる
         # NOTE: 並列な予約のoverbooking防止にFOR UPDATEが必要
-        tx.xquery('SELECT * FROM reservation_slots WHERE start_at >= ? AND end_at <= ? FOR UPDATE', req.start_at, req.end_at).each do |slot|
-          count = tx.xquery('SELECT slot FROM reservation_slots WHERE start_at = ? AND end_at = ?', slot.fetch(:start_at), slot.fetch(:end_at)).first.fetch(:slot)
+        tx.xquery('SELECT * FROM reservation_slots WHERE id BETWEEN ? AND ? FOR UPDATE', start_id, end_id).each do |slot|
           logger.info("#{slot.fetch(:start_at)} ~ #{slot.fetch(:end_at)}予約枠の残数 = #{slot.fetch(:slot)}")
-          if count < 1
+          if slot.fetch(:slot) < 1
             raise HttpError.new(400, "予約期間 #{term_start_at.to_i} ~ #{term_end_at.to_i}に対して、予約区間 #{req.start_at} ~ #{req.end_at}が予約できません")
           end
         end
 
-        tx.xquery('UPDATE reservation_slots SET slot = slot - 1 WHERE start_at >= ? AND end_at <= ?', req.start_at, req.end_at)
+        tx.xquery('UPDATE reservation_slots SET slot = slot - 1 WHERE id BETWEEN ? AND ?', start_id, end_id)
         tx.xquery('INSERT INTO livestreams (user_id, title, description, playlist_url, thumbnail_url, start_at, end_at) VALUES(?, ?, ?, ?, ?, ?, ?)', user_id, req.title, req.description, req.playlist_url, req.thumbnail_url, req.start_at, req.end_at)
         livestream_id = tx.last_id
 
