@@ -366,12 +366,88 @@ module Isupipe
             tx.xquery(query).to_a
           end
 
-        livestream_models.map do |livestream_model|
-          fill_livestream_response(tx, livestream_model)
-        end
+        fill_livestreams_response(tx, livestream_models)
+        # livestream_models.map do |livestream_model|
+        #   fill_livestream_response(tx, livestream_model)
+        # end
       end
 
       json(livestreams)
+    end
+
+    def fill_livestreams_response(tx, livestream_models)
+      user_ids = livestream_models.map { |model| model.fetch(:user_id) }
+
+      # 関連するすべてのユーザー情報を一度のクエリで取得
+      owners = tx.xquery('SELECT * FROM users WHERE id IN (?)', user_ids).to_a
+  
+      owners_model = fill_users_response(tx, owners)
+
+      livestream_ids = livestream_models.map { |model| model.fetch(:id) }
+
+      # 関連するすべてのタグを一度のクエリで取得
+      tags_data = 
+        tx.xquery(<<~SQL, livestream_ids).to_a
+          SELECT lt.livestream_id, t.id, t.name
+          FROM livestream_tags lt
+          INNER JOIN tags t ON lt.tag_id = t.id
+          WHERE lt.livestream_id IN (?)
+        SQL
+
+      # livestream_id をキーとするタグのハッシュを作成
+      tags_hash = tags_data.each_with_object({}) do |tag_data, hash|
+        livestream_id = tag_data[:livestream_id]
+        hash[livestream_id] ||= []
+        hash[livestream_id] << { id: tag_data[:id], name: tag_data[:name] }
+      end
+
+      processed_livestreams = livestream_models.map do |livestream_model|
+        livestream_model.slice(:id, :title, :description, :playlist_url, :thumbnail_url, :start_at, :end_at).merge(
+          owner: owners_model[livestream_model[:user_id]],
+          tags: tags_hash[livestream_model[:id]] || []
+        )
+      end
+    end
+
+    def fill_users_response(tx, user_models)
+      user_ids = user_models.map { |model| model.fetch(:id) }
+
+      # 関連するすべてのテーマを一度のクエリで取得
+      themes = tx.xquery('SELECT * FROM themes WHERE user_id IN (?)', user_ids).to_a
+
+      # 関連するすべてのアイコンを一度のクエリで取得
+      icons = tx.xquery('SELECT * FROM icons WHERE user_id IN (?)', user_ids).to_a
+      icons_hash = icons.each_with_object({}) do |icon, hash|
+        hash[icon[:user_id]] = icon
+      end
+
+      # user_id をキーとするテーマとアイコンのハッシュを作成
+      themes_hash = themes.each_with_object({}) { |theme, hash| hash[theme[:user_id]] = theme }
+
+      icons_hash_2 = user_models.each_with_object({}) do |user, hash|
+        image =
+        if icons_hash[user[:id]]
+          icon.fetch(:image)
+        else
+          File.binread(FALLBACK_IMAGE)
+        end
+        icon_image = Digest::SHA256.hexdigest(image)
+        hash[user[:id]] = icon_image
+      end
+
+      user_models.each_with_object({}) do |user, hash|
+        hash[user.fetch(:id)] = {
+        id: user.fetch(:id),
+        name: user.fetch(:name),
+        display_name: user.fetch(:display_name),
+        description: user.fetch(:description),
+        theme: {
+          id: themes_hash[user[:id]].fetch(:id),
+          dark_mode: themes_hash[user[:id]].fetch(:dark_mode),
+        },
+        icon_hash: icons_hash_2[user[:id]],
+        }
+      end
     end
 
     get '/api/livestream' do
