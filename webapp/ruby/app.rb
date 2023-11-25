@@ -10,14 +10,15 @@ require 'securerandom'
 require 'sinatra/base'
 require 'sinatra/json'
 
-require 'ddtrace/auto_instrument'
+# require 'ddtrace/auto_instrument'
+require 'redis'
 
-Datadog.configure do |c|
-  c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
-  c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
-  c.env = 'prod'
-  c.version = '1.3.0'
-end
+# Datadog.configure do |c|
+#   c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
+#   c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
+#   c.env = 'prod'
+#   c.version = '1.3.0'
+# end
 
 module Isupipe
   class App < Sinatra::Base
@@ -54,6 +55,10 @@ module Isupipe
         Thread.current[:db_conn] ||= connect_db
       end
 
+      def redis_conn
+        Thread.current[:redis_conn] ||= connect_redis
+      end
+
       def connect_db
         Mysql2::Client.new(
           host: ENV.fetch('ISUCON13_MYSQL_DIALCONFIG_ADDRESS', '127.0.0.1'),
@@ -65,6 +70,10 @@ module Isupipe
           cast_booleans: true,
           reconnect: true,
         )
+      end
+
+      def connect_redis
+        Redis.new(host: '127.0.0.1', port: 6379)
       end
 
       def db_transaction(&block)
@@ -223,6 +232,7 @@ module Isupipe
     # 初期化
     post '/api/initialize' do
       out, status = Open3.capture2e('../sql/init.sh')
+      redis_conn.flushall
       unless status.success?
         logger.warn("init.sh failed with out=#{out}")
         halt 500
@@ -428,7 +438,7 @@ module Isupipe
       icons_hash_2 = user_models.each_with_object({}) do |user, hash|
         image =
         if icons_hash[user[:id]]
-          icon.fetch(:image)
+          icons_hash[user[:id]].fetch(:image)
         else
           File.binread(FALLBACK_IMAGE)
         end
@@ -1033,6 +1043,11 @@ module Isupipe
     get '/api/user/:username/icon' do
       username = params[:username]
 
+      if redis_conn.get("icon:#{username}")
+        content_type 'image/jpeg'
+        return redis_conn.get("icon:#{username}")
+      end
+
       image = db_transaction do |tx|
         user = tx.xquery('SELECT * FROM users WHERE name = ?', username).first
         unless user
@@ -1043,6 +1058,7 @@ module Isupipe
 
       content_type 'image/jpeg'
       if image
+        redis_conn.set("icon:#{username}", image[:image])
         image[:image]
       else
         send_file FALLBACK_IMAGE
@@ -1067,8 +1083,10 @@ module Isupipe
       image = Base64.decode64(req.image)
 
       icon_id = db_transaction do |tx|
+        user_name = tx.xquery('SELECT name FROM users WHERE id = ?', user_id)
         tx.xquery('DELETE FROM icons WHERE user_id = ?', user_id)
         tx.xquery('INSERT INTO icons (user_id, image) VALUES (?, ?)', user_id, image)
+        redis_conn.del("icon:#{user_name}")
         tx.last_id
       end
 
