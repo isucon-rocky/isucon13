@@ -192,6 +192,31 @@ module Isupipe
           icon_hash:,
         }
       end
+      
+      def fill_user_response2(tx, user_id, user_name, user_display_name, user_description)
+        theme_model = tx.xquery('SELECT * FROM themes WHERE user_id = ?', user_id).first
+
+        icon_model = tx.xquery('SELECT image FROM icons WHERE user_id = ?', user_id).first
+        image =
+          if icon_model
+            icon_model.fetch(:image)
+          else
+            File.binread(FALLBACK_IMAGE)
+          end
+        icon_hash = Digest::SHA256.hexdigest(image)
+
+        {
+          id: user_id,
+          name: user_name,
+          display_name: user_display_name,
+          description: user_description,
+          theme: {
+            id: theme_model.fetch(:id),
+            dark_mode: theme_model.fetch(:dark_mode),
+          },
+          icon_hash:,
+        }
+      end
     end
 
     # 初期化
@@ -480,7 +505,12 @@ module Isupipe
       livestream_id = cast_as_integer(params[:livestream_id])
 
       livecomments = db_transaction do |tx|
-        query = 'SELECT * FROM livecomments WHERE livestream_id = ? ORDER BY created_at DESC'
+        query = '
+        SELECT livecomments.*, users.id AS user_id, users.name AS user_name, users.display_name AS user_display_name, users.description AS user_description
+        FROM livecomments 
+        INNER JOIN users ON livecomments.user_id = users.id
+        WHERE livestream_id = ? 
+        ORDER BY created_at DESC'
         limit_str = params[:limit] || ''
         if limit_str != ''
           limit = cast_as_integer(limit_str)
@@ -488,7 +518,21 @@ module Isupipe
         end
 
         tx.xquery(query, livestream_id).map do |livecomment_model|
-          fill_livecomment_response(tx, livecomment_model)
+          #comment_owner_model = tx.xquery('SELECT * FROM users WHERE id = ?', livecomment_model.fetch(:user_id)).first
+          comment_owner = fill_user_response2(
+            tx,
+            livecomment_model.fetch(:user_id), 
+            livecomment_model.fetch(:user_name), 
+            livecomment_model.fetch(:user_display_name),
+            livecomment_model.fetch(:user_description))
+
+          livestream_model = tx.xquery('SELECT * FROM livestreams WHERE id = ?', livecomment_model.fetch(:livestream_id)).first
+          livestream = fill_livestream_response(tx, livestream_model)
+
+          livecomment_model.slice(:id, :comment, :tip, :created_at).merge(
+            user: comment_owner,
+            livestream:,
+          )
         end
       end
 
