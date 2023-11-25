@@ -16,7 +16,7 @@ Datadog.configure do |c|
   c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
   c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
   c.env = 'prod'
-  c.version = '1.1.0'
+  c.version = '1.2.0'
 end
 
 module Isupipe
@@ -805,15 +805,116 @@ module Isupipe
       livestream_id = cast_as_integer(params[:livestream_id])
 
       reactions = db_transaction do |tx|
-        query = 'SELECT * FROM reactions WHERE livestream_id = ? ORDER BY created_at DESC'
+        query = '
+          SELECT 
+            reactions.*, 
+            livestreams.id AS livestream_id,
+            livestreams.title AS livestream_title,
+            livestreams.description AS livestream_description,
+            livestreams.playlist_url AS livestream_playlist_url,
+            livestreams.thumbnail_url AS livestream_thumbnail_url,
+            livestreams.start_at AS livestream_start_at,
+            livestreams.end_at AS livestream_end_at,
+            users.id AS user_id, 
+            users.name AS user_name, 
+            users.display_name AS user_display_name, 
+            users.description AS user_description, 
+            themes.id AS theme_id, 
+            themes.dark_mode AS theme_dark_mode, 
+            icons.image AS icon_image
+          FROM reactions 
+          INNER JOIN users ON reactions.user_id = users.id
+          INNER JOIN themes ON users.id = themes.user_id
+          INNER JOIN livestreams ON reactions.livestream_id = livestreams.id
+          LEFT OUTER JOIN icons ON users.id = icons.user_id
+          WHERE reactions.livestream_id = ?
+          ORDER BY created_at DESC
+        '
         limit_str = params[:limit] || ''
         if limit_str != ''
           limit = cast_as_integer(limit_str)
           query = "#{query} LIMIT #{limit}"
         end
 
-        tx.xquery(query, livestream_id).map do |reaction_model|
-          fill_reaction_response(tx, reaction_model)
+        query_result = tx.xquery(query, livestream_id)
+
+        livestream_ids = query_result.map { |livecomment_model| livecomment_model.fetch(:livestream_id) }.uniq
+        tags_array = {}
+        if !livestream_ids.empty?
+          tx.xquery("
+            SELECT tags.id AS id, tags.name AS name, livestream_tags.livestream_id AS livestream_id
+            FROM tags 
+            INNER JOIN livestream_tags ON tags.id = livestream_tags.tag_id 
+            WHERE livestream_tags.livestream_id IN (#{ livestream_ids.map { |_row| '?' }.join(',') })", 
+          *livestream_ids).map do |tag_model|
+            tags_array[tag_model.fetch(:livestream_id)] ||= []
+            tags_array[tag_model.fetch(:livestream_id)] << {
+              id: tag_model.fetch(:id),
+              name: tag_model.fetch(:name),
+            }
+          end
+        end
+
+        query_result.map do |reaction_model|
+          #user_model = tx.xquery('SELECT * FROM users WHERE id = ?', reaction_model.fetch(:user_id)).first
+          #user = fill_user_response(tx, user_model)
+
+          #theme_model = tx.xquery('SELECT * FROM themes WHERE user_id = ?', user_model.fetch(:id)).first
+
+          # icon_model = tx.xquery('SELECT image FROM icons WHERE user_id = ?', user_model.fetch(:id)).first
+          image =
+            if reaction_model.fetch(:icon_image)
+              reaction_model.fetch(:icon_image)
+            else
+              File.binread(FALLBACK_IMAGE)
+            end
+          icon_hash = Digest::SHA256.hexdigest(image)
+
+          user = {
+            id: reaction_model.fetch(:user_id),
+            name: reaction_model.fetch(:user_name),
+            display_name: reaction_model.fetch(:user_display_name),
+            description: reaction_model.fetch(:user_description),
+            theme: {
+              id: reaction_model.fetch(:theme_id),
+              dark_mode: reaction_model.fetch(:theme_dark_mode),
+            },
+            icon_hash:,
+          }
+
+          #livestream_model = tx.xquery('SELECT * FROM livestreams WHERE id = ?', reaction_model.fetch(:livestream_id)).first
+          #livestream = fill_livestream_response(tx, livestream_model)
+
+          # owner_model = tx.xquery('SELECT * FROM users WHERE id = ?', livestream_model.fetch(:user_id)).first
+          # owner = fill_user_response(tx, owner_model)
+
+          # tags = tx.xquery('SELECT * FROM livestream_tags WHERE livestream_id = ?', livestream_model.fetch(:id)).map do |livestream_tag_model|
+          #   tag_model = tx.xquery('SELECT * FROM tags WHERE id = ?', livestream_tag_model.fetch(:tag_id)).first
+          #   {
+          #     id: tag_model.fetch(:id),
+          #     name: tag_model.fetch(:name),
+          #   }
+          # end
+
+          # livestream = livestream_model.slice(:id, :title, :description, :playlist_url, :thumbnail_url, :start_at, :end_at).merge(
+          #   owner: user,
+          #   tags:,
+          # )
+
+          reaction_model.slice(:id, :emoji_name, :created_at).merge(
+            user:,
+            livestream: {
+              id: reaction_model.fetch(:livestream_id),
+              title: reaction_model.fetch(:livestream_title),
+              description: reaction_model.fetch(:livestream_description),
+              playlist_url: reaction_model.fetch(:livestream_playlist_url),
+              thumbnail_url: reaction_model.fetch(:livestream_thumbnail_url),
+              start_at: reaction_model.fetch(:livestream_start_at),
+              end_at: reaction_model.fetch(:livestream_end_at),
+              owner: user,
+              tags: tags_array[reaction_model.fetch(:livestream_id)] || [],
+            },
+          )
         end
       end
 
