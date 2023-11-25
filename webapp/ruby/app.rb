@@ -16,7 +16,7 @@ Datadog.configure do |c|
   c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
   c.tracing.instrument :mysql2,  service_name: "freee.group:rocky-12-mysql2",  analytics_enabled: true
   c.env = 'prod'
-  c.version = '1.0.0'
+  c.version = '1.1.0'
 end
 
 module Isupipe
@@ -185,6 +185,31 @@ module Isupipe
           name: user_model.fetch(:name),
           display_name: user_model.fetch(:display_name),
           description: user_model.fetch(:description),
+          theme: {
+            id: theme_model.fetch(:id),
+            dark_mode: theme_model.fetch(:dark_mode),
+          },
+          icon_hash:,
+        }
+      end
+      
+      def fill_user_response2(tx, user_id, user_name, user_display_name, user_description)
+        theme_model = tx.xquery('SELECT * FROM themes WHERE user_id = ?', user_id).first
+
+        icon_model = tx.xquery('SELECT image FROM icons WHERE user_id = ?', user_id).first
+        image =
+          if icon_model
+            icon_model.fetch(:image)
+          else
+            File.binread(FALLBACK_IMAGE)
+          end
+        icon_hash = Digest::SHA256.hexdigest(image)
+
+        {
+          id: user_id,
+          name: user_name,
+          display_name: user_display_name,
+          description: user_description,
           theme: {
             id: theme_model.fetch(:id),
             dark_mode: theme_model.fetch(:dark_mode),
@@ -480,15 +505,111 @@ module Isupipe
       livestream_id = cast_as_integer(params[:livestream_id])
 
       livecomments = db_transaction do |tx|
-        query = 'SELECT * FROM livecomments WHERE livestream_id = ? ORDER BY created_at DESC'
+        query = '
+        SELECT 
+          livecomments.*, 
+          livestreams.id AS livestream_id,
+          livestreams.title AS livestream_title,
+          livestreams.description AS livestream_description,
+          livestreams.playlist_url AS livestream_playlist_url,
+          livestreams.thumbnail_url AS livestream_thumbnail_url,
+          livestreams.start_at AS livestream_start_at,
+          livestreams.end_at AS livestream_end_at,
+          users.id AS user_id, 
+          users.name AS user_name, 
+          users.display_name AS user_display_name, 
+          users.description AS user_description, 
+          themes.id AS theme_id, 
+          themes.dark_mode AS theme_dark_mode, 
+          icons.image AS image
+        FROM livecomments 
+        INNER JOIN users ON livecomments.user_id = users.id
+        INNER JOIN themes ON users.id = themes.user_id
+        INNER JOIN livestreams ON livecomments.livestream_id = livestreams.id
+        LEFT OUTER JOIN icons ON users.id = icons.user_id
+        WHERE livecomments.livestream_id = ? 
+        ORDER BY created_at DESC'
         limit_str = params[:limit] || ''
         if limit_str != ''
           limit = cast_as_integer(limit_str)
           query = "#{query} LIMIT #{limit}"
         end
 
-        tx.xquery(query, livestream_id).map do |livecomment_model|
-          fill_livecomment_response(tx, livecomment_model)
+        query_result = tx.xquery(query, livestream_id)
+
+        livestream_ids = query_result.map { |livecomment_model| livecomment_model.fetch(:livestream_id) }.uniq
+
+        tags_array = {}
+        tag_query = "SELECT tags.id AS id, tags.name AS name, livestream_tags.livestream_id AS livestream_id
+          FROM tags 
+          INNER JOIN livestream_tags ON tags.id = livestream_tags.tag_id 
+          WHERE livestream_tags.livestream_id IN (#{ livestream_ids.map { |_row| '?' }.join(',') })"
+
+        if !livestream_ids.empty?
+          tx.xquery(tag_query, livestream_ids).map do |tag_model|
+            tags_array[tag_model.fetch(:livestream_id)] ||= []
+            tags_array[tag_model.fetch(:livestream_id)] << {
+              id: tag_model.fetch(:id),
+              name: tag_model.fetch(:name),
+            }
+          end
+        end
+
+        query_result.map do |livecomment_model|
+          image =
+            if livecomment_model.fetch(:image)
+              livecomment_model.fetch(:image)
+            else
+              File.binread(FALLBACK_IMAGE)
+            end
+          icon_hash = Digest::SHA256.hexdigest(image)
+
+          comment_owner = {
+            id: livecomment_model.fetch(:user_id),
+            name: livecomment_model.fetch(:user_name),
+            display_name: livecomment_model.fetch(:user_display_name),
+            description: livecomment_model.fetch(:user_description),
+            theme: {
+              id: livecomment_model.fetch(:theme_id),
+              dark_mode: livecomment_model.fetch(:theme_dark_mode),
+            },
+            icon_hash:,
+          }
+
+          #livestream_model = tx.xquery('SELECT * FROM livestreams WHERE id = ?', livecomment_model.fetch(:livestream_id)).first
+          #livestream = fill_livestream_response(tx, livestream_model)
+
+
+          #owner_model = tx.xquery('SELECT * FROM users WHERE id = ?', livestream_model.fetch(:user_id)).first
+          #owner = fill_user_response(tx, owner_model)
+
+          # tags = tx.xquery('SELECT * FROM livestream_tags WHERE livestream_id = ?', livecomment_model.fetch(:livestream_id)).map do |livestream_tag_model|
+          #   tag_model = tx.xquery('SELECT * FROM tags WHERE id = ?', livestream_tag_model.fetch(:tag_id)).first
+          #   {
+          #     id: tag_model.fetch(:id),
+          #     name: tag_model.fetch(:name),
+          #   }
+          # end
+
+          # livestream = livecomment_model.slice(:livestream_id, :livestream_title, :livestream_description, :livestream_playlist_url, :livestream_thumbnail_url, :livestream_start_at, :livestream_end_at).merge(
+          #   owner: comment_owner,
+          #   tags:,
+          # )
+
+          livecomment_model.slice(:id, :comment, :tip, :created_at).merge(
+            user: comment_owner,
+            livestream: {
+              id: livecomment_model.fetch(:livestream_id),
+              title: livecomment_model.fetch(:livestream_title),
+              description: livecomment_model.fetch(:livestream_description),
+              playlist_url: livecomment_model.fetch(:livestream_playlist_url),
+              thumbnail_url: livecomment_model.fetch(:livestream_thumbnail_url),
+              start_at: livecomment_model.fetch(:livestream_start_at),
+              end_at: livecomment_model.fetch(:livestream_end_at),
+              owner: comment_owner,
+              tags: tags_array[livecomment_model.fetch(:livestream_id)] || [],
+            },
+          )
         end
       end
 
