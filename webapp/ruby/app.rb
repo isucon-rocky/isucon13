@@ -11,6 +11,7 @@ require 'sinatra/base'
 require 'sinatra/json'
 
 require 'ddtrace/auto_instrument'
+require 'redis'
 
 Datadog.configure do |c|
   c.tracing.instrument :sinatra, service_name: "freee.group:rocky-12-sinatra", analytics_enabled: true
@@ -54,6 +55,10 @@ module Isupipe
         Thread.current[:db_conn] ||= connect_db
       end
 
+      def redis_conn
+        Thread.current[:redis_conn] ||= connect_redis
+      end
+
       def connect_db
         Mysql2::Client.new(
           host: ENV.fetch('ISUCON13_MYSQL_DIALCONFIG_ADDRESS', '127.0.0.1'),
@@ -65,6 +70,10 @@ module Isupipe
           cast_booleans: true,
           reconnect: true,
         )
+      end
+
+      def connect_redis
+        Redis.new(host: '127.0.0.1', port: 6379)
       end
 
       def db_transaction(&block)
@@ -1032,6 +1041,11 @@ module Isupipe
     get '/api/user/:username/icon' do
       username = params[:username]
 
+      if redis_conn.get("icon:#{username}")
+        content_type 'image/jpeg'
+        return redis_conn.get("icon:#{username}")
+      end
+
       image = db_transaction do |tx|
         user = tx.xquery('SELECT * FROM users WHERE name = ?', username).first
         unless user
@@ -1042,6 +1056,7 @@ module Isupipe
 
       content_type 'image/jpeg'
       if image
+        redis_conn.set("icon:#{username}", image[:image])
         image[:image]
       else
         send_file FALLBACK_IMAGE
@@ -1066,8 +1081,10 @@ module Isupipe
       image = Base64.decode64(req.image)
 
       icon_id = db_transaction do |tx|
+        user_name = tx.xquery('SELECT name FROM users WHERE id = ?', user_id)
         tx.xquery('DELETE FROM icons WHERE user_id = ?', user_id)
         tx.xquery('INSERT INTO icons (user_id, image) VALUES (?, ?)', user_id, image)
+        redis_conn.del("icon:#{user_name}")
         tx.last_id
       end
 
