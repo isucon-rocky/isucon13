@@ -27,11 +27,14 @@ mysql-slow.dump:
 mysql-slow.digest:
 	sudo pt-query-digest /var/log/mysql/mysql-slow.log
 
+service.status:
+	sudo systemctl status isupipe-ruby.service
+
 service.restart:
-	sudo systemctl restart isuconquest.ruby
+	sudo systemctl restart isupipe-ruby.service
 
 service.log:
-	sudo journalctl -u isuconquest.ruby
+	sudo journalctl -u isupipe-ruby.service
 
 mysql.sh:
 	sudo mysql -uisucon -pisucon -D isucon
@@ -41,6 +44,7 @@ deploy1:
 	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon1:/etc/mysql/mysql.conf.d
 	scp -r ./etc/nginx/isupipe.conf isucon1:/etc/nginx/sites-enabled
 	scp -r ./etc/nginx/nginx.conf isucon1:/etc/nginx
+	scp -r ./Makefile isucon1:~/Makefile
 	ssh isucon1 "sudo systemctl restart mysql"
 	ssh isucon1 "sudo systemctl restart nginx.service"
 	ssh isucon1 "sudo systemctl daemon-reload"
@@ -51,6 +55,7 @@ deploy2:
 	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon2:/etc/mysql/mysql.conf.d
 	scp -r ./etc/nginx/isupipe.conf isucon2:/etc/nginx/sites-enabled
 	scp -r ./etc/nginx/nginx.conf isucon2:/etc/nginx
+	scp -r ./Makefile isucon2:~/Makefile
 	ssh isucon2 "sudo systemctl restart mysql"
 	ssh isucon2 "sudo systemctl restart nginx.service"
 	ssh isucon2 "sudo systemctl daemon-reload"
@@ -61,6 +66,7 @@ deploy3:
 	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon3:/etc/mysql/mysql.conf.d
 	scp -r ./etc/nginx/isupipe.conf isucon3:/etc/nginx/sites-enabled
 	scp -r ./etc/nginx/nginx.conf isucon3:/etc/nginx
+	scp -r ./Makefile isucon3:~/Makefile
 	ssh isucon3 "sudo systemctl restart mysql"
 	ssh isucon3 "sudo systemctl restart nginx.service"
 	ssh isucon3 "sudo systemctl daemon-reload"
