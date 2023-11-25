@@ -836,17 +836,19 @@ module Isupipe
 
         livestream_ids = query_result.map { |livecomment_model| livecomment_model.fetch(:livestream_id) }.uniq
         tags_array = {}
-        tx.xquery("
-          SELECT tags.id AS id, tags.name AS name, livestream_tags.livestream_id AS livestream_id
-          FROM tags 
-          INNER JOIN livestream_tags ON tags.id = livestream_tags.tag_id 
-          WHERE livestream_tags.livestream_id IN (#{ livestream_ids.map { |_row| '?' }.join(',') })", 
-        *livestream_ids).map do |tag_model|
-          tags_array[tag_model.fetch(:livestream_id)] ||= []
-          tags_array[tag_model.fetch(:livestream_id)] << {
-            id: tag_model.fetch(:id),
-            name: tag_model.fetch(:name),
-          }
+        if !livestream_ids.empty?
+          tx.xquery("
+            SELECT tags.id AS id, tags.name AS name, livestream_tags.livestream_id AS livestream_id
+            FROM tags 
+            INNER JOIN livestream_tags ON tags.id = livestream_tags.tag_id 
+            WHERE livestream_tags.livestream_id IN (#{ livestream_ids.map { |_row| '?' }.join(',') })", 
+          *livestream_ids).map do |tag_model|
+            tags_array[tag_model.fetch(:livestream_id)] ||= []
+            tags_array[tag_model.fetch(:livestream_id)] << {
+              id: tag_model.fetch(:id),
+              name: tag_model.fetch(:name),
+            }
+          end
         end
 
         query_result.map do |reaction_model|
