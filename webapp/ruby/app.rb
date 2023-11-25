@@ -910,7 +910,6 @@ module Isupipe
       # また、現在の合計視聴者数もだす
 
       stats = db_transaction do |tx|
-
         user = tx.xquery('SELECT * FROM users WHERE name = ?', username).first
         unless user
           raise HttpError.new(400)
@@ -918,32 +917,29 @@ module Isupipe
 
         # ランク算出
         users = tx.xquery('SELECT * FROM users').to_a
-      
-        # すべてのユーザーとそのスコアを一度に取得する
-        user_scores = tx.xquery(<<~SQL).to_a
-        SELECT
-          u.id,
-          u.name,
-          COUNT(r.id) AS reaction_count,
-          IFNULL(SUM(lc.tip), 0) AS tip_sum
-        FROM users u
-        LEFT JOIN livestreams l ON l.user_id = u.id
-        LEFT JOIN reactions r ON r.livestream_id = l.id
-        LEFT JOIN livecomments lc ON lc.livestream_id = l.id
-        GROUP BY u.id
-        SQL
 
-        # ランキングの生成
-        ranking = user_scores.map do |user|
-          score = user[:reaction_count] + user[:tip_sum]
-          UserRankingEntry.new(username: user[:name], score: score)
+        ranking = users.map do |user|
+          reactions = tx.xquery(<<~SQL, user.fetch(:id), as: :array).first[0]
+            SELECT COUNT(*) FROM users u
+            INNER JOIN livestreams l ON l.user_id = u.id
+            INNER JOIN reactions r ON r.livestream_id = l.id
+            WHERE u.id = ?
+          SQL
+
+          tips = tx.xquery(<<~SQL, user.fetch(:id), as: :array).first[0]
+            SELECT IFNULL(SUM(l2.tip), 0) FROM users u
+            INNER JOIN livestreams l ON l.user_id = u.id
+            INNER JOIN livecomments l2 ON l2.livestream_id = l.id
+            WHERE u.id = ?
+          SQL
+
+          score = reactions + tips
+          UserRankingEntry.new(username: user.fetch(:name), score:)
         end
-        # ランキングのソート
-        ranking.sort_by! { |entry| [-entry.score, entry.username] }
 
-        # ユーザーのランキング位置の検索
-        ridx = ranking.find_index { |entry| entry.username == username }
-        rank = ridx + 1  # インデックスは0から始まるため、+1 してランクを
+        ranking.sort_by! { |entry| [entry.score, entry.username] }
+        ridx = ranking.rindex { |entry| entry.username == username }
+        rank = ranking.size - ridx
 
         # リアクション数
         total_reactions = tx.xquery(<<~SQL, username, as: :array).first[0]
@@ -995,97 +991,6 @@ module Isupipe
 
       json(stats)
     end
-
-    # get '/api/user/:username/statistics' do
-    #   verify_user_session!
-
-    #   username = params[:username]
-
-    #   # ユーザごとに、紐づく配信について、累計リアクション数、累計ライブコメント数、累計売上金額を算出
-    #   # また、現在の合計視聴者数もだす
-
-    #   stats = db_transaction do |tx|
-    #     user = tx.xquery('SELECT * FROM users WHERE name = ?', username).first
-    #     unless user
-    #       raise HttpError.new(400)
-    #     end
-
-    #     # ランク算出
-    #     users = tx.xquery('SELECT * FROM users').to_a
-
-    #     ranking = users.map do |user|
-    #       reactions = tx.xquery(<<~SQL, user.fetch(:id), as: :array).first[0]
-    #         SELECT COUNT(*) FROM users u
-    #         INNER JOIN livestreams l ON l.user_id = u.id
-    #         INNER JOIN reactions r ON r.livestream_id = l.id
-    #         WHERE u.id = ?
-    #       SQL
-
-    #       tips = tx.xquery(<<~SQL, user.fetch(:id), as: :array).first[0]
-    #         SELECT IFNULL(SUM(l2.tip), 0) FROM users u
-    #         INNER JOIN livestreams l ON l.user_id = u.id
-    #         INNER JOIN livecomments l2 ON l2.livestream_id = l.id
-    #         WHERE u.id = ?
-    #       SQL
-
-    #       score = reactions + tips
-    #       UserRankingEntry.new(username: user.fetch(:name), score:)
-    #     end
-
-    #     ranking.sort_by! { |entry| [entry.score, entry.username] }
-    #     ridx = ranking.rindex { |entry| entry.username == username }
-    #     rank = ranking.size - ridx
-
-    #     # リアクション数
-    #     total_reactions = tx.xquery(<<~SQL, username, as: :array).first[0]
-    #       SELECT COUNT(*) FROM users u
-    #       INNER JOIN livestreams l ON l.user_id = u.id
-    #       INNER JOIN reactions r ON r.livestream_id = l.id
-    #       WHERE u.name = ?
-    #     SQL
-
-    #     # ライブコメント数、チップ合計
-    #     total_livecomments = 0
-    #     total_tip = 0
-    #     livestreams = tx.xquery('SELECT * FROM livestreams WHERE user_id = ?', user.fetch(:id))
-    #     livestreams.each do |livestream|
-    #       tx.xquery('SELECT * FROM livecomments WHERE livestream_id = ?', livestream.fetch(:id)).each do |livecomment|
-    #         total_tip += livecomment.fetch(:tip)
-    #         total_livecomments += 1
-    #       end
-    #     end
-
-    #     # 合計視聴者数
-    #     viewers_count = 0
-    #     livestreams.each do |livestream|
-    #       cnt = tx.xquery('SELECT COUNT(*) FROM livestream_viewers_history WHERE livestream_id = ?', livestream.fetch(:id), as: :array).first[0]
-    #       viewers_count += cnt
-    #     end
-
-    #     # お気に入り絵文字
-    #     favorite_emoji = tx.xquery(<<~SQL, username).first&.fetch(:emoji_name)
-    #       SELECT r.emoji_name
-    #       FROM users u
-    #       INNER JOIN livestreams l ON l.user_id = u.id
-    #       INNER JOIN reactions r ON r.livestream_id = l.id
-    #       WHERE u.name = ?
-    #       GROUP BY emoji_name
-    #       ORDER BY COUNT(*) DESC, emoji_name DESC
-    #       LIMIT 1
-    #     SQL
-
-    #     {
-    #       rank:,
-    #       viewers_count:,
-    #       total_reactions:,
-    #       total_livecomments:,
-    #       total_tip:,
-    #       favorite_emoji:,
-    #     }
-    #   end
-
-    #   json(stats)
-    # end
 
     LivestreamRankingEntry = Data.define(:livestream_id, :score)
 
