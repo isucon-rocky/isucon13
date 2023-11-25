@@ -36,3 +36,32 @@ service.log:
 mysql.sh:
 	sudo mysql -uisucon -pisucon -D isucon
 
+deploy1:
+	scp -r ./webapp/ruby isucon1:~/webapp
+	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon1:/etc/mysql/mysql.conf.d
+	scp -r ./etc/nginx/isupipe.conf isucon1:/etc/nginx/sites-enabled
+	scp -r ./etc/nginx/nginx.conf isucon1:/etc/nginx
+	ssh isucon1 "sudo systemctl restart mysql"
+	ssh isucon1 "sudo systemctl restart nginx.service"
+	ssh isucon1 "sudo systemctl daemon-reload"
+	ssh isucon1 "sudo systemctl restart isupipe-ruby.service"
+
+deploy2:
+	scp -r ./webapp/ruby isucon2:~/webapp
+	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon2:/etc/mysql/mysql.conf.d
+	scp -r ./etc/nginx/isupipe.conf isucon2:/etc/nginx/sites-enabled
+	scp -r ./etc/nginx/nginx.conf isucon2:/etc/nginx
+	ssh isucon2 "sudo systemctl restart mysql"
+	ssh isucon2 "sudo systemctl restart nginx.service"
+	ssh isucon2 "sudo systemctl daemon-reload"
+	ssh isucon2 "sudo systemctl restart isupipe-ruby.service"
+
+deploy3:
+	scp -r ./webapp/ruby isucon3:~/webapp
+	scp -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon3:/etc/mysql/mysql.conf.d
+	scp -r ./etc/nginx/isupipe.conf isucon3:/etc/nginx/sites-enabled
+	scp -r ./etc/nginx/nginx.conf isucon3:/etc/nginx
+	ssh isucon3 "sudo systemctl restart mysql"
+	ssh isucon3 "sudo systemctl restart nginx.service"
+	ssh isucon3 "sudo systemctl daemon-reload"
+	ssh isucon3 "sudo systemctl restart isupipe-ruby.service"
