@@ -232,6 +232,7 @@ module Isupipe
     # 初期化
     post '/api/initialize' do
       out, status = Open3.capture2e('../sql/init.sh')
+      redis_conn.flushall
       unless status.success?
         logger.warn("init.sh failed with out=#{out}")
         halt 500
