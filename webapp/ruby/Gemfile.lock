@@ -2,6 +2,20 @@ GEM
   remote: https://rubygems.org/
   specs:
     bcrypt (3.1.19)
+    datadog-ci (0.3.0)
+      msgpack
+    ddtrace (1.16.2)
+      datadog-ci (~> 0.3.0)
+      debase-ruby_core_source (= 3.2.2)
+      libdatadog (~> 5.0.0.1.0)
+      libddwaf (~> 1.14.0.0.0)
+      msgpack
+    debase-ruby_core_source (3.2.2)
+    ffi (1.16.3)
+    libdatadog (5.0.0.1.0)
+    libddwaf (1.14.0.0.0)
+      ffi (~> 1.0)
+    msgpack (1.7.2)
     multi_json (1.15.0)
     mustermann (3.0.0)
       ruby2_keywords (~> 0.0.1)
@@ -33,6 +47,8 @@ PLATFORMS
 
 DEPENDENCIES
   bcrypt
+  datadog-ci (= 0.3.0)
+  ddtrace (= 1.16.2)
   mysql2
   mysql2-cs-bind
   puma
