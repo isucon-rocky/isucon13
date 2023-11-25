@@ -681,7 +681,12 @@ module Isupipe
       livestream_id = cast_as_integer(params[:livestream_id])
 
       reactions = db_transaction do |tx|
-        query = 'SELECT * FROM reactions WHERE livestream_id = ? ORDER BY created_at DESC'
+        query = '
+        SELECT reactions.*
+        FROM reactions 
+        INNER JOIN users ON users.id = reactions.user_id
+        WHERE livestream_id = ? 
+        ORDER BY created_at DESC'
         limit_str = params[:limit] || ''
         if limit_str != ''
           limit = cast_as_integer(limit_str)
@@ -689,7 +694,16 @@ module Isupipe
         end
 
         tx.xquery(query, livestream_id).map do |reaction_model|
-          fill_reaction_response(tx, reaction_model)
+          user_model = tx.xquery('SELECT * FROM users WHERE id = ?', reaction_model.fetch(:user_id)).first
+          user = fill_user_response(tx, user_model)
+
+          livestream_model = tx.xquery('SELECT * FROM livestreams WHERE id = ?', reaction_model.fetch(:livestream_id)).first
+          livestream = fill_livestream_response(tx, livestream_model)
+
+          reaction_model.slice(:id, :emoji_name, :created_at).merge(
+            user:,
+            livestream:,
+          )
         end
       end
 
