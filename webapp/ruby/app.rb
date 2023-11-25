@@ -939,7 +939,7 @@ module Isupipe
           UserRankingEntry.new(username: user[:name], score: score)
         end
         # ランキングのソート
-        ranking.sort_by! { |entry| [entry.score, entry.username] }
+        ranking.sort_by! { |entry| [-entry.score, entry.username] }
 
         # ユーザーのランキング位置の検索
         ridx = ranking.find_index { |entry| entry.username == username }
