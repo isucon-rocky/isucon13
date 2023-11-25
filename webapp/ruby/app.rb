@@ -427,7 +427,7 @@ module Isupipe
       icons_hash_2 = user_models.each_with_object({}) do |user, hash|
         image =
         if icons_hash[user[:id]]
-          icon.fetch(:image)
+          icons_hash[user[:id]].fetch(:image)
         else
           File.binread(FALLBACK_IMAGE)
         end
