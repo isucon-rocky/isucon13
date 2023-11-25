@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+env:
+  # Use the same ssh-agent socket value across all jobs
+  # Useful when a GH action is using SSH behind-the-scenes
+  SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -16,10 +21,14 @@ jobs:
       - name: ssh login
         env:
           PRIVATE_KEY: ${{ secrets.SECRET }}
+          PASSPHRASE: ${{ secrets.PASSPHRASE }}
           TARGET_IP: ${{ secrets.TARGET_IP }}
         run: |
           mkdir -p ~/.ssh
           echo "$PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          echo 'echo $PASSPHRASE' > ~/.ssh_askpass && chmod +x ~/.ssh_askpass
+          echo "$PRIVATE_KEY" | tr -d '\r' | DISPLAY=None SSH_ASKPASS=~/.ssh_askpass ssh-add - >/dev/null
           chmod 700 ~/.ssh/id_rsa
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
