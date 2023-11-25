@@ -20,13 +20,12 @@ jobs:
           eval $(ssh-agent -s)
           ssh-add ~/.ssh/id_rsa
           ssh-keyscan -p 22 -H "$TARGET_IP" >> ~/.ssh/known_hosts
-          # scp -i ~/.ssh/id_rsa -r ./webapp/ruby isucon@$TARGET_IP:~/webapp
-          # scp -i ~/.ssh/id_rsa -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon@$TARGET_IP:/etc/mysql/mysql.conf.d
-          # scp -i ~/.ssh/id_rsa -r ./etc/nginx/isuconquest.conf isucon@$TARGET_IP:/etc/nginx/sites-enabled
-          # scp -i ~/.ssh/id_rsa -r ./etc/nginx/nginx.conf isucon@$TARGET_IP:/etc/nginx
-          # ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart mysql"
-          # ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart nginx.service"
-          # ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl daemon-reload"
-          # ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart isuconquest.ruby.service"
-
+          scp -i ~/.ssh/id_rsa -r ./webapp/ruby isucon@$TARGET_IP:~/webapp
+          scp -i ~/.ssh/id_rsa -r ./etc/mysql/mysql.conf.d/mysqld.cnf isucon@$TARGET_IP:/etc/mysql/mysql.conf.d
+          scp -i ~/.ssh/id_rsa -r ./etc/nginx/isupipe.conf isucon@$TARGET_IP:/etc/nginx/sites-enabled
+          scp -i ~/.ssh/id_rsa -r ./etc/nginx/nginx.conf isucon@$TARGET_IP:/etc/nginx
+          ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart mysql"
+          ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart nginx.service"
+          ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl daemon-reload"
+          ssh -i ~/.ssh/id_rsa isucon@$TARGET_IP "sudo systemctl restart isupipe-ruby.service"
 
